@@ -28,7 +28,9 @@ class RealTimeCandlestickGraph:
         level=logging.INFO,
     )
 
-    def __init__(self, symbol: str, interval: str, width=360):
+    def __init__(
+        self, symbol: str, interval: str, width=360
+    ):  # 1 width is 1 mins 360 width is 6hrs
         self.symbol = symbol
         self.interval = interval
         self.width = width
