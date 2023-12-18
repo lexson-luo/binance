@@ -41,7 +41,7 @@ class PricingStrategy:
         self._live_sell_order = None
 
     def start(self):
-        logging.info("Start strategy")
+        logging.info(f"Start strategy for {self._symbol}..")
 
     # callback on order book update
     def on_orderbook(self, order_book: VenueOrderBook):

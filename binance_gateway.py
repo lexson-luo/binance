@@ -40,7 +40,7 @@ class BinanceFutureGateway:
 
         # dedicated loop and thread to run all async concurrent tasks
         self._loop = asyncio.new_event_loop()
-        self._loop_thread = Thread(target=self.run_async_tasks, daemon=True, name=name)
+        self._thread = Thread(target=self.run_async_tasks, daemon=True, name=name)
 
         # callbacks
         self._depth_callbacks = []
@@ -52,7 +52,7 @@ class BinanceFutureGateway:
         self._loop.run_until_complete(self._setting_asyncclient())
 
         logging.info("starting event loop thread..")
-        self._loop_thread.start()
+        self._thread.start()
 
         self._client = Client(self._api_key, self._api_secret, testnet=self.testnet)
 
@@ -93,7 +93,7 @@ class BinanceFutureGateway:
                             _d_callback(VenueOrderBook(self._exchange_name, self.get_order_book()))
 
                 except Exception as e:
-                    logging.info("[Error] depth processing error...")
+                    logging.info(f"[Error] depth processing error: {e}...")
                     self._dws = None
                     await self._setting_asyncclient()
 
@@ -181,8 +181,8 @@ class BinanceFutureGateway:
             logging.info(f"Failed to cancel order: {order_id}, {e}")
             return False
 
-    def register_depth_callback(self, d_callback):
-        self._depth_callbacks.append(d_callback)
+    def register_depth_callback(self, dep_callback):
+        self._depth_callbacks.append(dep_callback)
 
     def register_execution_callback(self, ex_callback):
         self._execution_callbacks.append(ex_callback)

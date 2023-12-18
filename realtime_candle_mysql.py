@@ -4,11 +4,16 @@ import json
 import pandas as pd
 import asyncio
 import websockets
+# import schedule
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import mplfinance as mpf
 import matplotlib.animation as animation
 import matplotlib.ticker as ticker
+import mysql.connector
+import os
+import dotenv
+from sqlalchemy import create_engine
 
 from threading import Thread
 
@@ -21,6 +26,8 @@ timeseries = {
     "volume": [],
 }
 
+dotenv.load_dotenv(r"C:\vault\.my_w")
+
 
 class RealTimeCandlestickGraph:
     logging.basicConfig(
@@ -29,8 +36,8 @@ class RealTimeCandlestickGraph:
     )
 
     def __init__(
-        self, symbol: str, interval: str, width=360
-    ):  # 1 width is 1 mins 360 width is 6hrs
+        self, symbol: str, interval: str, width=60
+    ):  # 1 width is 1 mins 60 width is 1hrs
         self.symbol = symbol
         self.interval = interval
         self.width = width
@@ -40,10 +47,8 @@ class RealTimeCandlestickGraph:
             2, 1, gridspec_kw={"height_ratios": [4, 1]}, sharex=True, figsize=(10, 8)
         )
 
-        # plt.style.use("ggplot")
-
         self.ani = animation.FuncAnimation(
-            self.fig, self._animate, interval=1000, blit=False
+            self.fig, self._animate, interval=1000, blit=False, cache_frame_data=False
         )
 
     async def _listen_kline_forever(self):
@@ -93,14 +98,42 @@ class RealTimeCandlestickGraph:
                     timeseries["low"] = timeseries["low"][-self.width :]
                     timeseries["close"] = timeseries["close"][-self.width :]
                     timeseries["volume"] = timeseries["volume"][-self.width :]
-                # print(timeseries)
-                # print(len(timeseries["date"]))
 
     def run_task(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.create_task(self._listen_kline_forever())
+        loop.create_task(self.mysql_func())
         loop.run_forever()
+
+    async def mysql_func(self):
+        host = "127.0.0.1"
+        user = "root"
+        pw = os.getenv("mysqlpw")
+        database_name = "candlesticks_data"
+        table_name = self.symbol + "_candle_1m"
+
+        conn = mysql.connector.connect(host=host, user=user, password=pw)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
+        cursor.execute(f"USE {database_name}")
+        # cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ("
+        #                f"date BIGINT PRIMARY KEY,"
+        #                f"open FLOAT,"
+        #                f"high FLOAT, "
+        #                f"low FLOAT, "
+        #                f"close FLOAT, "
+        #                f"volume FLOAT)")
+
+        engine = create_engine(f"mysql+mysqlconnector://{user}:{pw}@localhost/{database_name}")
+
+        while True:
+            await asyncio.sleep(60)
+            global timeseries
+            df = pd.DataFrame(timeseries)
+            df["date"] = pd.to_datetime(df["date"], unit="ms")
+            logging.info("loading dataframe to mysql..")
+            df.to_sql(name=table_name, con=engine, index=False, if_exists='replace')
 
     def start(self):
         loop_thread = Thread(target=self.run_task, daemon=True, name="Async Thread")
@@ -114,10 +147,10 @@ class RealTimeCandlestickGraph:
         plt.style.use("ggplot")
 
         self.ax.set_title("BTCUSDT Candlestick Chart")
-        self.ax.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=False))
+        self.ax.yaxis.get_major_formatter().set_scientific(False)
+        self.ax.yaxis.get_major_formatter().set_useOffset(False)
         self.ax.ticklabel_format(style="plain", axis="y")
         self.ax.grid(color="gray", linestyle="--", linewidth=0.5)
-        self.ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         self.volume_ax.grid(color="gray", linestyle="--", linewidth=0.5)
 
@@ -125,6 +158,9 @@ class RealTimeCandlestickGraph:
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], unit="ms")
             df.set_index("date", inplace=True)
+
+            self.ax.yaxis.set_major_locator(ticker.MultipleLocator(base=10))
+            self.ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
             mpf.plot(
                 df,
@@ -135,15 +171,21 @@ class RealTimeCandlestickGraph:
                 show_nontrading=False,
             )
 
+            latest_price = df["close"].iloc[-1]
+            # self.ax.axhline(latest_price, linestyle="--", color="blue", linewidth=1, label="Latest Price")
+
+            self.ax.text(self.ax.get_xlim()[1], latest_price, f'{latest_price:.2f}', color='blue', va='top',
+                         ha='left', bbox= dict(facecolor='white', edgecolor='blue', boxstyle='round,pad=0.3'))
+
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
 
 
 if __name__ == "__main__":
+    logging.info("Programming starting..")
     quant = RealTimeCandlestickGraph(symbol="btcusdt", interval="1m")
     quant.start()
-    plt.pause(0.01)
-    plt.show()
 
+    plt.show()
     while True:
         time.sleep(1)
