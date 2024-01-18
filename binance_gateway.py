@@ -49,7 +49,7 @@ class BinanceFutureGateway:
     def connect(self):
         logging.info("Initializing connection..")
 
-        self._loop.run_until_complete(self._setting_asyncclient())
+        self._loop.run_until_complete(self._setting_async_client())
 
         logging.info("starting event loop thread..")
         self._thread.start()
@@ -61,7 +61,7 @@ class BinanceFutureGateway:
             schedule.run_pending()
             time.sleep(1)
 
-    async def _setting_asyncclient(self):
+    async def _setting_async_client(self):
         logging.info("Configuring depth websocket AsyncClient...")
         self._async_client = await AsyncClient.create(
             self._api_key, self._api_secret, testnet=self.testnet
@@ -95,7 +95,7 @@ class BinanceFutureGateway:
                 except Exception as e:
                     logging.info(f"[Error] depth processing error: {e}...")
                     self._dws = None
-                    await self._setting_asyncclient()
+                    await self._setting_async_client()
 
     def get_order_book(self) -> OrderBook:
         _bids = [
