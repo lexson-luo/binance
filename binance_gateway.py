@@ -1,13 +1,11 @@
 import asyncio
 import logging
-import json
-import websockets
 import schedule
 import time
 
-
-from binance import Client, AsyncClient
 from threading import Thread
+
+from binance import Client, AsyncClient, BinanceSocketManager
 from binance.depthcache import FuturesDepthCacheManager
 from interface_order import OrderEvent, OrderStatus, ExecutionType, Side
 from interface_book import OrderBook, PriceLevel, VenueOrderBook
@@ -62,13 +60,13 @@ class BinanceFutureGateway:
             time.sleep(1)
 
     async def _setting_async_client(self):
-        logging.info("Configuring depth websocket AsyncClient...")
+        logging.info("Configuring depth websocket AsyncClient..")
         self._async_client = await AsyncClient.create(
             self._api_key, self._api_secret, testnet=self.testnet
         )
 
     def extend_listen_key(self):
-        logging.info("Extending listen key...")
+        logging.info("Extending listen key..")
         self._client.futures_stream_keepalive(self._listen_key)
 
     def run_async_tasks(self):
@@ -77,10 +75,10 @@ class BinanceFutureGateway:
         self._loop.run_forever()
 
     async def _listen_depth_forever(self):
-        logging.info("Subscribing to depth events...")
+        logging.info("Subscribing to depth events..")
         while True:
             if not self._dws:
-                logging.info("depth socket not connected, connecting...")
+                logging.info("depth socket not connected, connecting..")
                 self._dcm = FuturesDepthCacheManager(
                     self._async_client, symbol=self._symbol
                 )
@@ -93,7 +91,7 @@ class BinanceFutureGateway:
                             _d_callback(VenueOrderBook(self._exchange_name, self.get_order_book()))
 
                 except Exception as e:
-                    logging.info(f"[Error] depth processing error: {e}...")
+                    logging.info(f"[Error] Depth processing error: {e}..")
                     self._dws = None
                     await self._setting_async_client()
 
@@ -112,20 +110,17 @@ class BinanceFutureGateway:
         )
 
     async def _listen_execution_forever(self):
-        logging.info("Subscribing to user data stream...")
-        self._listen_key = await self._async_client.futures_stream_get_listen_key()
-        if self.testnet:
-            url = "wss://stream.binancefuture.com/ws/" + self._listen_key
-        else:
-            url = "wss://fstream.binance.com/ws/" + self._listen_key
+        logging.info("Subscribing to user data stream..")
+        self._listen_key = BinanceSocketManager(self._async_client)
+        url = self._listen_key.futures_user_socket()
 
-        async with websockets.connect(url) as ws:
-            while ws.open:
+        async with url as ws:
+            while True:
                 _message = await ws.recv()
-                _m_data = json.loads(_message)
-                _event = _m_data["e"]
+                # print(_message)
+                _event = _message["e"]
                 if _event == "ORDER_TRADE_UPDATE":
-                    _trade_data = _m_data["o"]
+                    _trade_data = _message["o"]
                     _order_id = _trade_data["c"]
                     _symbol = _trade_data["s"]
                     _ex_type = _trade_data["x"]
@@ -149,6 +144,10 @@ class BinanceFutureGateway:
                     if self._execution_callbacks:
                         for _ex_callback in self._execution_callbacks:
                             _ex_callback(_order_event)
+
+                if _event == 'ACCOUNT_UPDATE':
+                    _position = _message['a']['P'][0]['pa']
+                    logging.info(f"Open position: {_position}")
 
     """
         Place limit order

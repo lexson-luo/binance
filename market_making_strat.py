@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from interface_book import OrderBook, VenueOrderBook
+from interface_book import VenueOrderBook
 from interface_order import OrderEvent, Side, OrderStatus
 from binance_gateway import BinanceFutureGateway
 import logging
@@ -36,7 +36,6 @@ class PricingStrategy:
         self._order_size = order_size
         self._sensitivity = sensitivity
         self._binance_gateway = binance_gateway
-        self._position = 0
         self._live_buy_order = None
         self._live_sell_order = None
 
@@ -86,7 +85,6 @@ class PricingStrategy:
     # callback on execution update
     def on_execution(self, order_event: OrderEvent):
         logging.info("Receive execution: {}".format(order_event))
-        self._update_position(order_event)
 
         if order_event.side == Side.BUY:
             if self._live_buy_order:
@@ -142,12 +140,6 @@ class PricingStrategy:
                 order.last_order_event.order_id,
             )
 
-    # update current position
-    def _update_position(self, order_event: OrderEvent):
-        _sign = 1 if order_event.side == Side.BUY else -1
-        self._position += _sign * order_event.last_filled_quantity
-        logging.info("Net position: {:.3f}".format(self._position))
-
     # check if order has completed
     def _is_complete(self, order_event: OrderEvent):
         return (
@@ -186,5 +178,5 @@ if __name__ == "__main__":
     binance_gateway.register_depth_callback(strategy.on_orderbook)
 
     # start
-    binance_gateway.connect()
     strategy.start()
+    binance_gateway.connect()
